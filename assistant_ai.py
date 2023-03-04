@@ -1,6 +1,5 @@
 import logging
 import os
-import time
 from typing import Any
 
 import openai
@@ -17,6 +16,22 @@ VOICE_INPUT_FILE = "input.ogg"
 MAXIMUM_WINDOW_SIZE = 10
 
 
+GPT_ASSISTANT_PROMPT_FOR_CHILD = {
+    "role": "system",
+    "content": "You are a helpful assistant to the child."
+    " You need to prevent any harmless information"
+    " to a child under 10 years. "
+    " Try to understand text with a lot of mistakes in it."
+    " You are highly intelligent little girl.",
+}
+
+
+GPT_ASSISTANT_PROMPT_FOR_ADULT = {
+    "role": "system",
+    "content": "You are a helpful assistant." " You are highly intelligent teacher",
+}
+
+
 class AssistantAI:
     def __init__(self, language: str = "en") -> None:
         self._voice_recognition_model = whisper.load_model("base")
@@ -30,14 +45,7 @@ class AssistantAI:
         self._text_generator_model = "gpt-3.5-turbo"
 
         self._current_talk_per_user = {}
-        self._system_msg = {
-            "role": "system",
-            "content": "You are a helpful assistant to the child."
-            " You need to prevent any harmless information"
-            " to a child under 10 years. "
-            " Try to understand text with a lot of mistakes in it."
-            " You are highly intelligent little girl.",
-        }
+        self._system_msg = GPT_ASSISTANT_PROMPT_FOR_CHILD
         self._lang = language
         self._use_previous_history_per_user = None  # disabled for privacy reasons
 
@@ -56,6 +64,14 @@ class AssistantAI:
         model.to(device)
         return model
 
+    def change_gpt_system_prompt(self, user_id: int, is_adult: bool = True) -> None:
+        if is_adult is True:
+            new_system_prompt = GPT_ASSISTANT_PROMPT_FOR_ADULT
+        else:
+            new_system_prompt = GPT_ASSISTANT_PROMPT_FOR_CHILD
+
+        self._current_talk_per_user[user_id] = [new_system_prompt]
+
     def create_response_from_text(self, message: str, user_id: int) -> str:
         self._update_user_current_history(user_id, message)
 
@@ -69,15 +85,12 @@ class AssistantAI:
         return response
 
     def create_response_from_voice(self, user_id: int) -> Any:
-        a = time.time()
         # generate text from user voice with Whisper Open AI model
         text_from_user_voice = self._voice_recognition_model.transcribe(
             VOICE_INPUT_FILE
         )["text"]
-        b = time.time()
-        logging.info(
-            "response from Whisper AI:", text_from_user_voice, f"time spent {b - a}"
-        )
+
+        logging.info(f"response from Whisper AI: {text_from_user_voice}")
 
         self._update_user_current_history(user_id, text_from_user_voice)
 
@@ -88,9 +101,8 @@ class AssistantAI:
         self._current_talk_per_user[user_id].append(
             {"role": "assistant", "content": text_response}
         )
-        c = time.time()
 
-        logging.info("response from GPT:", text_response, f"time spent {c - b}")
+        logging.info(f"response from GPT: {text_response}")
 
         # generate Voice from text by using YourTTs model
         if self._lang == "en":
@@ -118,8 +130,6 @@ class AssistantAI:
                 put_accent=put_accent,
                 put_yo=put_yo,
             )
-        logging.info(f"time spent {time.time() - c}")
-
         return open(voice_output, "rb")
 
     def make_request_to_open_ai_chat_gpt(self, prompt: str) -> str:
@@ -134,6 +144,7 @@ class AssistantAI:
     ) -> None:
         if user_id not in self._current_talk_per_user:
             self._current_talk_per_user[user_id] = [self._system_msg]
+
         # we want to move it like sliding window
         # in purpose to limit input tokes (minimize our payments)
         elif len(self._current_talk_per_user[user_id]) >= MAXIMUM_WINDOW_SIZE:
