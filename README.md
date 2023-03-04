@@ -9,3 +9,6 @@ The pipeline for voice flow is: <br />
      2. Use Whisper AI (from OpenAI) model locally that converts Speech to Text (STT model) <br />
      3. Use ChatGPT API with prompt and limited history for each particular user <br />
      4. Convert response from ChatGPT to voice by using Text to Speech models ( TTS by coqui-AI and silero_tts for RU language) <br />
+     
+
+* It's my pet project for my daughter :)
