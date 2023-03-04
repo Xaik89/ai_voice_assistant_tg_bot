@@ -11,4 +11,4 @@ The pipeline for voice flow is: <br />
      4. Convert response from ChatGPT to voice by using Text to Speech models ( TTS by coqui-AI and silero_tts for RU language) <br />
      
 
-* It's my pet project for my daughter :)
+*-> It's my pet project for my daughter :)
