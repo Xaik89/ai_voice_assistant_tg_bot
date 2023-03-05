@@ -1,16 +1,14 @@
-AI Assistant in Telegram Bot:<br />
+AI Assistant for Telegram Bot:<br />
 
-It has two options for input:<br />
-    a. text input (regular message)<br />
-    b. voice input<br />
-    
-In both cases, the bot gets a response from ChatGPT. <br />
-The pipeline for voice flow is: <br />
-     1. Receive voice and process it on the server (ai_voice_bot.py) <br />
-     2. Use Whisper AI (from OpenAI) model locally that converts Speech to Text (STT model) <br />
-     3. Use ChatGPT API to correct generated text (very usefull for the child) <br />
-     4. Use ChatGPT API with prompt and limited history for each particular user <br />
-     5. Convert response from ChatGPT to voice by using Text to Speech models ( TTS by coqui-AI and silero_tts for RU language) <br />
+This bot provides two input options: text and voice.<br />
+The bot retrieves responses from ChatGPT for both types of input.<br />
+
+For voice input, the pipeline includes: <br />
+     &ensp;1. Receive voice and process it on the server (ai_voice_bot.py) <br />
+     &ensp;2. Use Whisper AI (from OpenAI) model locally that converts Speech to Text (STT model) <br />
+     &ensp;3. The text generated is then corrected using ChatGPT API, which can be especially useful for children <br />
+     &ensp;4. Use ChatGPT API with prompt and limited history for each particular user <br />
+     &ensp;5. Convert response from ChatGPT to voice by using Text to Speech models ( TTS by coqui-AI and silero_tts for RU language) <br />
      
 
-*-> It's my pet project for my daughter :)
+This is a pet project created for my daughter :)
