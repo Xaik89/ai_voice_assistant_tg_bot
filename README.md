@@ -12,3 +12,6 @@ For voice input, the pipeline includes: <br />
      
 
 This is a pet project created for my daughter :)
+
+
+link to medium article - https://medium.com/@andreyhaykin/make-your-own-telegram-voice-assistant-with-chatgpt-20d79c042a4f
