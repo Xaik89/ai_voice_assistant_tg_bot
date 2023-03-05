@@ -10,6 +10,8 @@ from TTS.api import TTS
 
 load_dotenv()
 openai.api_key = os.environ.get("OPENAI_API_KEY")
+logging.basicConfig(level=logging.INFO)
+
 
 VOICE_OUTPUT_FILE = "output.wav"
 VOICE_INPUT_FILE = "input.ogg"
@@ -94,7 +96,7 @@ class AssistantAI:
 
         self._update_user_current_history(user_id, text_from_user_voice)
 
-        # run chatGPT to get response with history
+        # run chatGPT to get response with user's history
         text_response = self.make_request_to_open_ai_chat_gpt(
             self._current_talk_per_user[user_id]
         )

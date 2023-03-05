@@ -8,7 +8,7 @@ from assistant_ai import VOICE_INPUT_FILE, AssistantAI
 load_dotenv()
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
-model = AssistantAI(language="ru")
+ai_assistant = AssistantAI(language="ru")
 
 
 @bot.message_handler(commands=["start", "help"])
@@ -23,33 +23,35 @@ def send_welcome(message):
 
 @bot.message_handler(commands=["use_en"])
 def change_language_to_en(message):
-    global model
-    model = AssistantAI(language="en")
+    global ai_assistant
+    ai_assistant = AssistantAI(language="en")
     bot.send_message(message.chat.id, "Done")
 
 
 @bot.message_handler(commands=["use_ru"])
 def change_language_to_ru(message):
-    global model
-    model = AssistantAI(language="ru")
+    global ai_assistant
+    ai_assistant = AssistantAI(language="ru")
     bot.send_message(message.chat.id, "Done")
 
 
 @bot.message_handler(commands=["adult"])
 def change_gpt_system_setup_to_adult(message):
-    model.change_gpt_system_prompt(message.from_user.id, is_adult=True)
+    ai_assistant.change_gpt_system_prompt(message.from_user.id, is_adult=True)
     bot.send_message(message.chat.id, "Done")
 
 
 @bot.message_handler(commands=["child"])
 def change_gpt_system_setup_to_child(message):
-    model.change_gpt_system_prompt(message.from_user.id, is_adult=False)
+    ai_assistant.change_gpt_system_prompt(message.from_user.id, is_adult=False)
     bot.send_message(message.chat.id, "Done")
 
 
 @bot.message_handler(content_types=["text"])
 def handle_text(message):
-    text_response = model.create_response_from_text(message.text, message.from_user.id)
+    text_response = ai_assistant.create_response_from_text(
+        message.text, message.from_user.id
+    )
     bot.send_message(message.chat.id, text_response)
 
 
@@ -60,7 +62,7 @@ def handle_voice(message):
     with open(VOICE_INPUT_FILE, "wb") as new_file:
         new_file.write(downloaded_file)
 
-    voice_response = model.create_response_from_voice(message.from_user.id)
+    voice_response = ai_assistant.create_response_from_voice(message.from_user.id)
     bot.send_voice(message.chat.id, voice_response)
 
 
