@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 from typing import Any
 
 import openai
@@ -53,6 +54,10 @@ class AssistantAI:
             raise Exception("Not supported language")
         self._text_generator_model = "gpt-3.5-turbo"
 
+        # Creating lock for threads (different users)
+        # we need this, because we have only one GPU and can't run 2 models in parallel
+        self._lock = threading.Lock()
+
         self._current_talk_per_user = {}
         self._system_msg = GPT_ASSISTANT_PROMPT_FOR_CHILD
         self._lang = language
@@ -94,14 +99,16 @@ class AssistantAI:
         return response
 
     def create_response_from_voice(self, user_id: int) -> Any:
+        self._lock.acquire()
         # Stage 1
         # generate text from user voice with Whisper Open AI model
         text_from_user_voice = self._voice_recognition_model.transcribe(
-            VOICE_INPUT_FILE
+            f"{str(user_id)}_{VOICE_INPUT_FILE}"
         )["text"]
 
         logging.info(f"response from Whisper AI: {text_from_user_voice}")
 
+        self._lock.release()
         # Stage 2
         # correct the text
         edit_response = self.make_request_to_open_ai_chat_gpt_correct_text(
@@ -121,20 +128,22 @@ class AssistantAI:
 
         logging.info(f"response from GPT: {text_response}")
 
+        self._lock.acquire()
         # Stage 4
         # generate Voice from text by using YourTTs model
         if self._lang == "en":
+            voice_output_per_thread = f"{str(user_id)}_{VOICE_OUTPUT_FILE}"
             self._text_to_speech_model.tts_to_file(
                 text=text_response,
                 speaker=self._text_to_speech_model.speakers[1],
                 language=self._text_to_speech_model.languages[0],
-                file_path=VOICE_OUTPUT_FILE,
+                file_path=voice_output_per_thread,
             )
             # self._text_to_speech_model.tts_to_file(text_response,
             #                                        speaker_wav="custom_voice.wav",
             #                                        language="en",
             #                                        file_path=VOICE_OUTPUT_FILE)
-            voice_output = VOICE_OUTPUT_FILE
+            voice_output = voice_output_per_thread
 
         else:
             speaker = "xenia"
@@ -148,6 +157,9 @@ class AssistantAI:
                 put_accent=put_accent,
                 put_yo=put_yo,
             )
+        logging.info("speech generation is done")
+        self._lock.release()
+
         return open(voice_output, "rb")
 
     def make_request_to_open_ai_chat_gpt(self, prompt: str) -> str:
