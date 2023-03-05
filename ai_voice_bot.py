@@ -62,7 +62,12 @@ def handle_voice(message):
     with open(VOICE_INPUT_FILE, "wb") as new_file:
         new_file.write(downloaded_file)
 
-    voice_response = ai_assistant.create_response_from_voice(message.from_user.id)
+    try:
+        voice_response = ai_assistant.create_response_from_voice(message.from_user.id)
+    except Exception as err:  # The message could be too long
+        bot.send_message(message.chat.id, f"{err}")
+        return
+
     bot.send_voice(message.chat.id, voice_response)
 
 

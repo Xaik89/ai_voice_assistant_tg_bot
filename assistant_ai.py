@@ -15,6 +15,7 @@ logging.basicConfig(level=logging.INFO)
 
 VOICE_OUTPUT_FILE = "output.wav"
 VOICE_INPUT_FILE = "input.ogg"
+LIMIT_TOKENS_FOR_CHAT_GPT = 4096
 MAXIMUM_WINDOW_SIZE = 10
 
 
@@ -31,6 +32,12 @@ GPT_ASSISTANT_PROMPT_FOR_CHILD = {
 GPT_ASSISTANT_PROMPT_FOR_ADULT = {
     "role": "system",
     "content": "You are a helpful assistant." " You are highly intelligent teacher",
+}
+
+GPT_SYSTEM_MSG_FOR_EDITING_TEXT = {
+    "role": "system",
+    "content": "You need to correct spelling and grammar for small girl for the next Message."
+    " No need to send back Translation",
 }
 
 
@@ -87,6 +94,7 @@ class AssistantAI:
         return response
 
     def create_response_from_voice(self, user_id: int) -> Any:
+        # Stage 1
         # generate text from user voice with Whisper Open AI model
         text_from_user_voice = self._voice_recognition_model.transcribe(
             VOICE_INPUT_FILE
@@ -94,8 +102,15 @@ class AssistantAI:
 
         logging.info(f"response from Whisper AI: {text_from_user_voice}")
 
-        self._update_user_current_history(user_id, text_from_user_voice)
+        # Stage 2
+        # correct the text
+        edit_response = self.make_request_to_open_ai_chat_gpt_correct_text(
+            text_from_user_voice
+        )
+        self._update_user_current_history(user_id, edit_response)
+        logging.info(f"response from GPT grammar fix: {edit_response}")
 
+        # Stage 3
         # run chatGPT to get response with user's history
         text_response = self.make_request_to_open_ai_chat_gpt(
             self._current_talk_per_user[user_id]
@@ -106,6 +121,7 @@ class AssistantAI:
 
         logging.info(f"response from GPT: {text_response}")
 
+        # Stage 4
         # generate Voice from text by using YourTTs model
         if self._lang == "en":
             self._text_to_speech_model.tts_to_file(
@@ -141,6 +157,47 @@ class AssistantAI:
         )
         return completion["choices"][0]["message"]["content"]
 
+    def make_request_to_open_ai_chat_gpt_correct_text(self, prompt: str) -> str:
+        full_prompt = [
+            GPT_SYSTEM_MSG_FOR_EDITING_TEXT,
+            {"role": "user", "content": prompt},
+        ]
+        # Generate a response
+        completion = openai.ChatCompletion.create(
+            model=self._text_generator_model, messages=full_prompt
+        )
+        return completion["choices"][0]["message"]["content"]
+
+    @staticmethod
+    def _calculate_prompt_size(text: str) -> int:
+        # we calculate average number by this formula:
+        # 1 token ~= 4 chars in English
+        return len(text.replace(" ", ""))
+
+    def _limit_size_of_prompt_to_the_maximum_of_chat_gpt(self, user_id: int) -> None:
+        # we have hard maximum 4096 tokens
+        # want always to use system message and the last prompt
+        system_msg_tokens_size = self._calculate_prompt_size(
+            self._current_talk_per_user[user_id][0]["content"]
+        )
+        last_prompt_tokens_size = self._calculate_prompt_size(
+            self._current_talk_per_user[user_id][-1]["content"]
+        )
+
+        always_used_tokens_size = system_msg_tokens_size + last_prompt_tokens_size
+        sum_tokens_size = always_used_tokens_size
+        curr_index = len(self._current_talk_per_user[user_id]) - 2
+        while sum_tokens_size < LIMIT_TOKENS_FOR_CHAT_GPT and curr_index > 0:
+            curr_msg_tokens_size = self._calculate_prompt_size(
+                self._current_talk_per_user[user_id][curr_index]["content"]
+            )
+            if sum_tokens_size + curr_msg_tokens_size < LIMIT_TOKENS_FOR_CHAT_GPT:
+                sum_tokens_size += curr_msg_tokens_size
+            else:
+                del self._current_talk_per_user[user_id][1:curr_index]
+                break
+            curr_index -= 1
+
     def _update_user_current_history(
         self, user_id: int, text_from_user_voice: str
     ) -> None:
@@ -150,10 +207,13 @@ class AssistantAI:
         # we want to move it like sliding window
         # in purpose to limit input tokes (minimize our payments)
         elif len(self._current_talk_per_user[user_id]) >= MAXIMUM_WINDOW_SIZE:
-            del self._current_talk_per_user[user_id][1]
+            del self._current_talk_per_user[user_id][1:2]
         self._current_talk_per_user[user_id].append(
             {"role": "user", "content": text_from_user_voice}
         )
+
+        self._limit_size_of_prompt_to_the_maximum_of_chat_gpt(user_id)
+
         logging.info(
             f"queue size of messages per user for GPT {len(self._current_talk_per_user[user_id])}"
         )
