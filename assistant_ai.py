@@ -19,7 +19,7 @@ VOICE_INPUT_FILE = "input.ogg"
 LIMIT_TOKENS_FOR_CHAT_GPT = 4096
 MAXIMUM_WINDOW_SIZE = 10
 
-
+# Default system prompts for assistant messages
 GPT_ASSISTANT_PROMPT_FOR_CHILD = {
     "role": "system",
     "content": "You are a helpful assistant to the child."
@@ -28,13 +28,11 @@ GPT_ASSISTANT_PROMPT_FOR_CHILD = {
     " Try to understand text with a lot of mistakes in it."
     " You are highly intelligent little girl.",
 }
-
-
 GPT_ASSISTANT_PROMPT_FOR_ADULT = {
     "role": "system",
     "content": "You are a helpful assistant." " You are highly intelligent teacher",
 }
-
+# System prompt for grammar text editing
 GPT_SYSTEM_MSG_FOR_EDITING_TEXT = {
     "role": "system",
     "content": "You need to correct spelling and grammar for small girl for the next Message."
@@ -44,27 +42,36 @@ GPT_SYSTEM_MSG_FOR_EDITING_TEXT = {
 
 class AssistantAI:
     def __init__(self, language: str = "en") -> None:
+        # Initialize voice recognition model
         self._voice_recognition_model = whisper.load_model("base")
 
+        # Initialize text-to-speech model based on language
         if language == "en":
             self._text_to_speech_model = TTS(TTS.list_models()[0])
         elif language == "ru":
             self._text_to_speech_model = self._init_tts_model_ru_model()
         else:
             raise Exception("Not supported language")
+
+        # Set text generation model to GPT-3.5 Turbo
         self._text_generator_model = "gpt-3.5-turbo"
 
-        # Creating lock for threads (different users)
-        # we need this, because we have only one GPU and can't run 2 models in parallel
+        # Create a lock for threads to ensure only one model can run at a time
         self._lock = threading.Lock()
 
+        # Dictionary to keep track of conversation history per user
         self._current_talk_per_user = {}
+
+        # Set system message prompt based on user age
         self._system_msg = GPT_ASSISTANT_PROMPT_FOR_CHILD
         self._lang = language
-        self._use_previous_history_per_user = None  # disabled for privacy reasons
+
+        # Keep previous history for each user disabled for privacy reasons
+        self._use_previous_history_per_user = None
 
     @staticmethod
     def _init_tts_model_ru_model() -> torch.nn.Module:
+        """Helper function to initialize TTS model for Russian language"""
         language = "ru"
         model_id = "v3_1_ru"
         device = torch.device("cuda")
@@ -79,6 +86,7 @@ class AssistantAI:
         return model
 
     def change_gpt_system_prompt(self, user_id: int, is_adult: bool = True) -> None:
+        """changes system prompt based on user age"""
         if is_adult is True:
             new_system_prompt = GPT_ASSISTANT_PROMPT_FOR_ADULT
         else:
@@ -87,12 +95,16 @@ class AssistantAI:
         self._current_talk_per_user[user_id] = [new_system_prompt]
 
     def create_response_from_text(self, message: str, user_id: int) -> str:
+        """generates response from text input"""
+        # Update user's current history with message
         self._update_user_current_history(user_id, message)
 
+        # Generate response from GPT based on current user's conversation history
         response = self.make_request_to_open_ai_chat_gpt(
             self._current_talk_per_user[user_id]
         )
 
+        # Append assistant's response to user's conversation history
         self._current_talk_per_user[user_id].append(
             {"role": "assistant", "content": response}
         )
@@ -100,8 +112,8 @@ class AssistantAI:
 
     def create_response_from_voice(self, user_id: int) -> Any:
         self._lock.acquire()
-        # Stage 1
-        # generate text from user voice with Whisper Open AI model
+
+        # Stage 1: generate text from user voice with Whisper Open AI model
         text_from_user_voice = self._voice_recognition_model.transcribe(
             f"{str(user_id)}_{VOICE_INPUT_FILE}"
         )["text"]
@@ -109,8 +121,8 @@ class AssistantAI:
         logging.info(f"response from Whisper AI: {text_from_user_voice}")
 
         self._lock.release()
-        # Stage 2
-        # correct the text
+
+        # Stage 2: correct the text
         edit_response = self.make_request_to_open_ai_chat_gpt_correct_text(
             text_from_user_voice
         )
@@ -129,8 +141,8 @@ class AssistantAI:
         logging.info(f"response from GPT: {text_response}")
 
         self._lock.acquire()
-        # Stage 4
-        # generate Voice from text by using YourTTs model
+
+        # Stage 4: generate Voice from text by using YourTTs model
         if self._lang == "en":
             voice_output_per_thread = f"{str(user_id)}_{VOICE_OUTPUT_FILE}"
             self._text_to_speech_model.tts_to_file(
@@ -182,11 +194,13 @@ class AssistantAI:
 
     @staticmethod
     def _calculate_prompt_size(text: str) -> int:
+        """Calculates the size of a given text prompt"""
         # we calculate average number by this formula:
         # 1 token ~= 4 chars in English
-        return len(text.replace(" ", ""))
+        return int(len(text.replace(" ", "")) / 4)
 
     def _limit_size_of_prompt_to_the_maximum_of_chat_gpt(self, user_id: int) -> None:
+        """Limits the size of the prompt to the maximum allowed by ChatGPT"""
         # we have hard maximum 4096 tokens
         # want always to use system message and the last prompt
         system_msg_tokens_size = self._calculate_prompt_size(
@@ -213,11 +227,12 @@ class AssistantAI:
     def _update_user_current_history(
         self, user_id: int, text_from_user_voice: str
     ) -> None:
+        """Updates the user's current conversation history"""
         if user_id not in self._current_talk_per_user:
             self._current_talk_per_user[user_id] = [self._system_msg]
 
         # we want to move it like sliding window
-        # in purpose to limit input tokes (minimize our payments)
+        # in order to limit input tokes (minimize our payments)
         elif len(self._current_talk_per_user[user_id]) >= MAXIMUM_WINDOW_SIZE:
             del self._current_talk_per_user[user_id][1:2]
         self._current_talk_per_user[user_id].append(
